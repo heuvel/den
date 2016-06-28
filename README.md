@@ -21,4 +21,4 @@
     * single value columns (to identify less interesting columns)
     * general column type (the default column type)
 * Perform column type specific analyses
-* Create data exploration notebook with column type specific statistics and visalisations
+* Create data exploration notebook with column type specific statistics and visualisations
