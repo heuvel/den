@@ -231,7 +231,8 @@ def den_nb_add_block(den_nb_name,table_col_name,den_col_type):
                                            'columns': {
                                                         table_col_name: { 
                                                             'den_type': den_col_type, 
-                                                            'block_sequence': 1
+                                                            'block_sequence': 1,
+                                                            'pattern': None
                                                         }
                                            }
                                }
