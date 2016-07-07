@@ -1,94 +1,97 @@
 import den_notebook
 import den_blocks_spark as den_blocks
 import json
-import sys, getopt
+import os, re
 import argparse
 
 def runtype_newconf(parsed_args):
     print 'creating new DEN notebook configuration file...'
     
-    den_nb_name = parsed_args.notebook
-    table_hcat_name = parsed_args.table
+    den_nb = den_notebook.Den('hcat', nb_name=parsed_args.notebook, hcat_table=parsed_args.table)
+    den_nb.save_conf()
     
-    # create new den_nb configuration
-    den_nb_conf = den_notebook.den_nb_conf_new(den_nb_name,table_hcat_name)
-
-    den_nb_conf_file = den_nb_name + '.den_nb_conf.json'
-    with open(den_nb_conf_file, 'wb') as f:
-        json.dump(den_nb_conf, f, indent=4)
-    print ' --> ' + den_nb_conf_file + ' created'
+    print ' --> ' + den_nb.name + '.den_nb_conf.json created'
     return
 
 def runtype_conf2nb(parsed_args):
-    den_nb_name = parsed_args.notebook
+    print 'creating new DEN notebook from ' + parsed_args.notebook + '.den_nb_conf.json'
     
-    den_nb_conf_file = den_nb_name + '.den_nb_conf.json'
-    print 'creating new DEN notebook from ' + den_nb_conf_file
-    with open(den_nb_conf_file, 'r') as f:
-        den_nb_conf = json.load(f)
+    den_nb = den_notebook.Den('conf', nb_name=parsed_args.notebook)   
+    den_nb.conf2nb()
+    den_nb.save_nb()
     
-    # add cells based on tables and columns config
-    den_nb_conf = den_notebook.den_nb_conf_add_cells(den_nb_conf)
-    
-    # generate notebook from den_nb configuration
-    den_nb = den_notebook.den_nb_generate(den_nb_conf)
-    
-    # save den_nb to disk
-    den_nb_fn = den_nb_conf['filename']
-    den_notebook.den_nb_save(den_nb,den_nb_fn)
-    
-    print ' --> ' + den_nb_fn + ' created'
+    print ' --> ' + den_nb.name  + '.ipynb created'
     return
 
 def runtype_execute(parsed_args):
-    den_nb_name = parsed_args.notebook
-
-    print 'executing ' + den_nb_name + '.ipynb...'
-        
-    den_notebook.den_nb_execute(den_nb_name)
-    print ' --> ' + den_nb_name + '.ipynb executed.'
+    print 'executing ' + parsed_args.notebook + '.ipynb...'
+    
+    den_nb = den_notebook.Den('nb', nb_name=parsed_args.notebook)
+    den_nb.execute()
+    den_nb.save_nb()
+    
+    print ' --> ' + den_nb.name + '.ipynb executed.'
     return
 
 def runtype_autocol(parsed_args):
-    den_nb_name = parsed_args.notebook
+    print 'auto assigning column types for ' + parsed_args.notebook + '.ipynb...'
     
-    print 'auto assigning column types for ' + den_nb_name + '.ipynb...'
+    den_nb = den_notebook.Den('conf', nb_name=parsed_args.notebook)
+    den_nb.autocol()
+    den_nb.save_conf()
     
-    #den_notebook.den_nb_auto_assign_col_types_pig(den_nb_name)
-    den_notebook.den_nb_auto_assign_col_types_spark(den_nb_name)
-    print ' --> ' + den_nb_name + '.ipynb, column types assigned.'
+    #den_notebook.den_nb_auto_assign_col_types_spark(den_nb_name)
+    print ' --> ' + den_nb.name + '.ipynb, column types assigned.'
     return
 
 def runtype_quickscan(parsed_args):
-    runtype_newconf(parsed_args)
-    runtype_conf2nb(parsed_args)
-    runtype_execute(parsed_args)
+    # newconf
+    print 'creating new DEN notebook...'
+    den_nb = den_notebook.Den('hcat', nb_name=parsed_args.notebook, hcat_table=parsed_args.table)
+    den_nb.conf2nb()
+    den_nb.execute()
+    den_nb.save_conf()
+    den_nb.save_nb()
+    print ' --> ' + den_nb.name + '.ipynb created and executed.'
+    
     return
 
 def runtype_fullscan(parsed_args):
-    #quickscan
-    runtype_quickscan(parsed_args)
+    # newconf
+    print 'creating new DEN notebook...'
+    den_nb = den_notebook.Den('hcat', nb_name=parsed_args.notebook, hcat_table=parsed_args.table)
+    den_nb.conf2nb()
+    den_nb.execute()
+    den_nb.autocol()
+    den_nb.conf2nb()
+    den_nb.execute()
+    den_nb.save_conf()
+    den_nb.save_nb()
+    print ' --> ' + den_nb.name + '.ipynb created and executed.'
     
-    #assign coltypes, convert and execute
-    runtype_autocol(parsed_args)
-    runtype_conf2nb(parsed_args)
-    runtype_execute(parsed_args)
     return
 
 def runtype_getnotes(parsed_args):
-    item_select = parsed_args.item_select
-    filename_notes = parsed_args.filename_notes
-    
-    den_notebook.den_nb_get_notes_nbs(item_select,filename_notes)
+    den_nbs_names = [nb for nb in os.listdir('.') if re.search('.*\.ipynb$',nb)]
+        
+    notes_md = ''
+    for den_nb_name in den_nbs_names:
+        print den_nb_name[:-6]
+        den_nb = den_notebook.Den('nb', nb_name=den_nb_name[:-6])
+        nb_notes = den_nb.get_notes(parsed_args.item_select)
+        
+        if nb_notes != '':
+            notes_md = notes_md + nb_notes + '\n***\n***\n'   
+        
+    # save to markdown file
+    fn_notes = parsed_args.filename_notes 
+    if not fn_notes.endswith('.md'):
+        fn_notes = fn_notes.join('.md')
+    with open(fn_notes, 'w') as f:
+        f.write(notes_md.encode('utf8'))
+
     return
 
-def runtype_addblock(parsed_args):
-    den_nb_name = parsed_args.notebook
-    table_col_name = parsed_args.column_name
-    den_col_type = parsed_args.column_type
-    
-    den_notebook.den_nb_add_block(den_nb_name,table_col_name,den_col_type)
-    return
 
 if __name__ == "__main__":
   
@@ -128,20 +131,11 @@ if __name__ == "__main__":
    ap_sub_fscan.add_argument('-t','--table', help='database.table (as in hcatalog)', required=True)
    ap_sub_fscan.add_argument('-n','--notebook', help='notebook name', required=True)
 
-   # addblock
-   column_types = den_blocks.block_conf['mapping'].keys()
-   
-   ap_sub_addblock = ap_sub.add_parser('addblock', help='add block to the end of an existing DEN notebook')
-   ap_sub_addblock.set_defaults(cmd=lambda x:runtype_addblock(x))
-   ap_sub_addblock.add_argument('-n','--notebook', help='notebook name', required=True)
-   ap_sub_addblock.add_argument('-c','--column_name', help='name of column', required=True)
-   ap_sub_addblock.add_argument('-b','--column_type', help='DEN column type for new block', choices=column_types, required=True)
-   
    # getnotes
    ap_sub_getnotes = ap_sub.add_parser('getnotes', help='collect notes from all notebooks in current directory')
    ap_sub_getnotes.set_defaults(cmd=lambda x:runtype_getnotes(x))
-   ap_sub_getnotes.add_argument('-i','--item_select', help='select which items to collect', choices=['all','open','status'], required=True)
-   ap_sub_getnotes.add_argument('-f','--filename_notes', help='filename without extension for notes', required=True)
+   ap_sub_getnotes.add_argument('-i','--item_select', help='select which items to collect', choices=['all','open','status'], default='all')
+   ap_sub_getnotes.add_argument('-f','--filename_notes', help='filename without extension for notes', default='notes.md')
 
    ap_parsed = ap.parse_args()
    ap_parsed.cmd(ap_parsed)
